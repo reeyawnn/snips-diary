@@ -2,6 +2,8 @@ import type { Language, Snippet } from "@/types";
 
 type SidebarProps = {
   snippets: Snippet[];
+  selectedSnippetId?: string;
+  onSelectSnippet: (snippet: Snippet) => void;
 };
 
 const languageLabels: Record<Language, string> = {
@@ -33,10 +35,14 @@ function formatUpdatedDate(value: string) {
   }).format(new Date(value));
 }
 
-export function Sidebar({ snippets }: SidebarProps) {
+export function Sidebar({
+  snippets,
+  selectedSnippetId,
+  onSelectSnippet,
+}: SidebarProps) {
   return (
-    <aside className="flex h-screen w-80 shrink-0 flex-col border-r border-neutral-200 bg-white">
-      <div className="border-b border-neutral-200 px-6 py-6">
+    <aside className="flex h-screen w-[300px] shrink-0 flex-col border-r border-neutral-200 bg-white">
+      <div className="border-b border-neutral-200 px-5 py-5">
         <div className="flex items-center justify-between gap-4">
           <h1 className="text-2xl font-semibold tracking-tight text-neutral-950">
             Snips Diary
@@ -50,28 +56,38 @@ export function Sidebar({ snippets }: SidebarProps) {
         </div>
       </div>
 
-      <nav aria-label="Snippets" className="min-h-0 flex-1 overflow-y-auto p-4">
-        <ul className="space-y-3">
-          {snippets.map((snippet) => (
-            <li key={snippet.id}>
-              <button
-                type="button"
-                className="w-full rounded-lg border border-transparent p-3 text-left transition-colors hover:border-neutral-200 hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-neutral-300"
-              >
-                <span className="block truncate text-sm font-medium text-neutral-950">
-                  {snippet.title}
-                </span>
-                <span className="mt-2 flex items-center justify-between gap-3">
-                  <span className="rounded-md bg-neutral-100 px-2 py-1 text-xs font-medium text-neutral-500">
-                    {languageLabels[snippet.language]}
+      <nav aria-label="Snippets" className="min-h-0 flex-1 overflow-y-auto p-3">
+        <ul className="space-y-2">
+          {snippets.map((snippet) => {
+            const isSelected = snippet.id === selectedSnippetId;
+
+            return (
+              <li key={snippet.id}>
+                <button
+                  type="button"
+                  aria-current={isSelected ? "true" : undefined}
+                  onClick={() => onSelectSnippet(snippet)}
+                  className={`w-full rounded-lg border p-3 text-left transition-colors focus:outline-none focus:ring-2 focus:ring-neutral-300 ${
+                    isSelected
+                      ? "border-neutral-200 bg-neutral-100"
+                      : "border-transparent hover:border-neutral-200 hover:bg-neutral-50"
+                  }`}
+                >
+                  <span className="block truncate text-sm font-medium text-neutral-950">
+                    {snippet.title}
                   </span>
-                  <span className="shrink-0 text-xs text-neutral-400">
-                    {formatUpdatedDate(snippet.updatedAt)}
+                  <span className="mt-2 flex items-center justify-between gap-3">
+                    <span className="rounded-md bg-neutral-100 px-2 py-1 text-xs font-medium text-neutral-500">
+                      {languageLabels[snippet.language]}
+                    </span>
+                    <span className="shrink-0 text-xs text-neutral-400">
+                      {formatUpdatedDate(snippet.updatedAt)}
+                    </span>
                   </span>
-                </span>
-              </button>
-            </li>
-          ))}
+                </button>
+              </li>
+            );
+          })}
         </ul>
       </nav>
     </aside>
