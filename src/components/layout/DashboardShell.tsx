@@ -1,9 +1,11 @@
 "use client";
 
 import { FormEvent, useState } from "react";
+import Editor from "@monaco-editor/react";
 
 import { Sidebar } from "@/components/layout/Sidebar";
-import type { Language, Snippet } from "@/types";
+import { languageByValue, languages } from "@/lib/languages";
+import type { Language, Snippet, TestCase } from "@/types";
 
 type DashboardShellProps = {
   snippets: Snippet[];
@@ -16,26 +18,14 @@ type SnippetEditorDraft = {
   code: string;
 };
 
-const languageOptions: { label: string; value: Language }[] = [
-  { label: "JavaScript", value: "javascript" },
-  { label: "TypeScript", value: "typescript" },
-  { label: "Python", value: "python" },
-  { label: "Java", value: "java" },
-  { label: "C#", value: "csharp" },
-  { label: "C++", value: "cpp" },
-  { label: "Go", value: "go" },
-  { label: "Rust", value: "rust" },
-  { label: "Ruby", value: "ruby" },
-  { label: "PHP", value: "php" },
-  { label: "Swift", value: "swift" },
-  { label: "Kotlin", value: "kotlin" },
-  { label: "SQL", value: "sql" },
-  { label: "HTML", value: "html" },
-  { label: "CSS", value: "css" },
-  { label: "Shell", value: "shell" },
-  { label: "Markdown", value: "markdown" },
-  { label: "Text", value: "text" },
-];
+type MockRunResult = {
+  id: string;
+  testCaseId: string;
+  testCaseName: string;
+  status: "passed" | "failed";
+  expectedOutput: string;
+  actualOutput: string;
+};
 
 function createEditorDraft(snippet: Snippet): SnippetEditorDraft {
   return {
@@ -46,8 +36,24 @@ function createEditorDraft(snippet: Snippet): SnippetEditorDraft {
   };
 }
 
+function createTestCase(): TestCase {
+  const timestamp = new Date().toISOString();
+
+  return {
+    id: `test-${Date.now()}`,
+    name: "New test case",
+    input: "",
+    expectedOutput: "",
+    createdAt: timestamp,
+    updatedAt: timestamp,
+  };
+}
+
 export function DashboardShell({ snippets }: DashboardShellProps) {
   const [localSnippets, setLocalSnippets] = useState<Snippet[]>(snippets);
+  const [runResultsBySnippetId, setRunResultsBySnippetId] = useState<
+    Record<string, MockRunResult[]>
+  >({});
   const [selectedSnippetId, setSelectedSnippetId] = useState<string | null>(
     null,
   );
@@ -56,6 +62,9 @@ export function DashboardShell({ snippets }: DashboardShellProps) {
 
   const selectedSnippet =
     localSnippets.find((snippet) => snippet.id === selectedSnippetId) ?? null;
+  const selectedRunResults = selectedSnippetId
+    ? runResultsBySnippetId[selectedSnippetId] ?? []
+    : [];
 
   function handleSelectSnippet(snippet: Snippet) {
     setSelectedSnippetId(snippet.id);
@@ -85,6 +94,108 @@ export function DashboardShell({ snippets }: DashboardShellProps) {
     );
   }
 
+  function handleAddTestCase() {
+    if (!selectedSnippetId) {
+      return;
+    }
+
+    setLocalSnippets((currentSnippets) =>
+      currentSnippets.map((snippet) =>
+        snippet.id === selectedSnippetId
+          ? {
+              ...snippet,
+              testCases: [...snippet.testCases, createTestCase()],
+              updatedAt: new Date().toISOString(),
+            }
+          : snippet,
+      ),
+    );
+  }
+
+  function handleRemoveTestCase(testCaseId: string) {
+    if (!selectedSnippetId) {
+      return;
+    }
+
+    setLocalSnippets((currentSnippets) =>
+      currentSnippets.map((snippet) =>
+        snippet.id === selectedSnippetId
+          ? {
+              ...snippet,
+              testCases: snippet.testCases.filter(
+                (testCase) => testCase.id !== testCaseId,
+              ),
+              updatedAt: new Date().toISOString(),
+            }
+          : snippet,
+      ),
+    );
+    setRunResultsBySnippetId((currentResults) => ({
+      ...currentResults,
+      [selectedSnippetId]: (currentResults[selectedSnippetId] ?? []).filter(
+        (result) => result.testCaseId !== testCaseId,
+      ),
+    }));
+  }
+
+  function handleUpdateTestCase(
+    testCaseId: string,
+    field: "name" | "input" | "expectedOutput",
+    value: string,
+  ) {
+    if (!selectedSnippetId) {
+      return;
+    }
+
+    setLocalSnippets((currentSnippets) =>
+      currentSnippets.map((snippet) =>
+        snippet.id === selectedSnippetId
+          ? {
+              ...snippet,
+              testCases: snippet.testCases.map((testCase) =>
+                testCase.id === testCaseId
+                  ? {
+                      ...testCase,
+                      [field]: value,
+                      updatedAt: new Date().toISOString(),
+                    }
+                  : testCase,
+              ),
+              updatedAt: new Date().toISOString(),
+            }
+          : snippet,
+      ),
+    );
+  }
+
+  function handleRunTests() {
+    if (!selectedSnippetId || !selectedSnippet) {
+      return;
+    }
+
+    const mockResults = selectedSnippet.testCases.map((testCase, index) => {
+      const passed = index % 2 === 0;
+      const expectedOutput =
+        testCase.expectedOutput.trim() || "No expected output provided.";
+
+      return {
+        id: `run-${selectedSnippet.id}-${testCase.id}`,
+        testCaseId: testCase.id,
+        testCaseName: testCase.name.trim() || `Test case ${index + 1}`,
+        status: passed ? "passed" : "failed",
+        expectedOutput,
+        actualOutput: passed
+          ? expectedOutput
+          : `Mock actual output for ${testCase.name || `test case ${index + 1}`}.`,
+      } satisfies MockRunResult;
+    });
+
+    setRunResultsBySnippetId((currentResults) => ({
+      ...currentResults,
+      [selectedSnippetId]: mockResults,
+    }));
+  }
+
   return (
     <div className="flex h-screen overflow-hidden bg-neutral-100 text-neutral-950">
       <Sidebar
@@ -93,9 +204,12 @@ export function DashboardShell({ snippets }: DashboardShellProps) {
         onSelectSnippet={handleSelectSnippet}
       />
 
-      <main className="min-w-0 flex-1 overflow-y-auto bg-white">
+      <main className="min-w-0 flex-1 bg-white">
         {selectedSnippet && editorDraft ? (
-          <form className="flex min-h-full flex-col" onSubmit={handleSaveSnippet}>
+          <form
+            className="flex h-full min-h-0 flex-col"
+            onSubmit={handleSaveSnippet}
+          >
             <header className="border-b border-neutral-200 px-8 py-5">
               <div className="flex items-start justify-between gap-6">
                 <div className="flex min-w-0 flex-1 flex-col gap-3">
@@ -138,9 +252,9 @@ export function DashboardShell({ snippets }: DashboardShellProps) {
                       }
                       className="h-8 rounded-md border border-neutral-200 bg-neutral-50 px-2.5 text-sm font-medium text-neutral-700 outline-none transition-colors focus:border-neutral-300 focus:ring-2 focus:ring-neutral-200"
                     >
-                      {languageOptions.map((language) => (
+                      {languages.map((language) => (
                         <option key={language.value} value={language.value}>
-                          {language.label}
+                          {language.displayName}
                         </option>
                       ))}
                     </select>
@@ -156,8 +270,8 @@ export function DashboardShell({ snippets }: DashboardShellProps) {
               </div>
             </header>
 
-            <div className="flex flex-1 flex-col">
-              <section className="border-b border-neutral-200 px-8 py-6">
+            <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+              <section className="shrink-0 border-b border-neutral-200 px-8 py-6">
                 <label
                   className="text-xs font-medium uppercase tracking-wide text-neutral-400"
                   htmlFor="snippet-notes"
@@ -182,32 +296,40 @@ export function DashboardShell({ snippets }: DashboardShellProps) {
                 />
               </section>
 
-              <section className="flex min-h-0 flex-1 flex-col px-8 py-6">
+              <section className="flex min-h-0 flex-1 flex-col overflow-hidden px-8 py-6">
                 <div className="mb-3 flex items-center justify-between border-b border-neutral-200 pb-3">
-                  <label
-                    className="text-xs font-medium uppercase tracking-wide text-neutral-400"
-                    htmlFor="snippet-code"
-                  >
+                  <h3 className="text-xs font-medium uppercase tracking-wide text-neutral-400">
                     Code
-                  </label>
+                  </h3>
                   <span className="text-xs text-neutral-400">
-                    Plain textarea
+                    Monaco Editor
                   </span>
                 </div>
-                <textarea
-                  id="snippet-code"
-                  value={editorDraft.code}
-                  onChange={(event) =>
-                    setEditorDraft((currentDraft) =>
-                      currentDraft
-                        ? { ...currentDraft, code: event.target.value }
-                        : currentDraft,
-                    )
-                  }
-                  spellCheck={false}
-                  className="min-h-96 flex-1 resize-none overflow-auto rounded-lg border border-neutral-200 bg-neutral-50 p-5 font-mono text-sm leading-6 text-neutral-800 outline-none transition-colors placeholder:text-neutral-400 focus:border-neutral-300 focus:bg-white focus:ring-2 focus:ring-neutral-200"
-                  placeholder="Write or paste a code snippet."
-                />
+                <div className="min-h-0 flex-1 overflow-hidden rounded-lg border border-neutral-200 bg-neutral-50">
+                  <Editor
+                    height="100%"
+                    language={
+                      languageByValue[editorDraft.language].monacoLanguageId
+                    }
+                    theme="vs-light"
+                    value={editorDraft.code}
+                    onChange={(value) =>
+                      setEditorDraft((currentDraft) =>
+                        currentDraft
+                          ? { ...currentDraft, code: value ?? "" }
+                          : currentDraft,
+                      )
+                    }
+                    options={{
+                      automaticLayout: true,
+                      fontSize: 14,
+                      minimap: { enabled: false },
+                      padding: { top: 16, bottom: 16 },
+                      scrollBeyondLastLine: false,
+                      wordWrap: "on",
+                    }}
+                  />
+                </div>
               </section>
             </div>
           </form>
@@ -257,21 +379,165 @@ export function DashboardShell({ snippets }: DashboardShellProps) {
               </section>
 
               <section className="px-6 py-5">
-                <h3 className="text-xs font-medium uppercase tracking-wide text-neutral-400">
-                  Test Cases
-                </h3>
-                <p className="mt-3 text-sm text-neutral-500">
-                  Test case management will appear here.
-                </p>
+                <div className="flex items-center justify-between gap-3">
+                  <h3 className="text-xs font-medium uppercase tracking-wide text-neutral-400">
+                    Test Cases
+                  </h3>
+                  <button
+                    type="button"
+                    onClick={handleAddTestCase}
+                    className="inline-flex h-8 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-white px-2.5 text-xs font-medium text-neutral-700 transition-colors hover:bg-neutral-50 focus:outline-none focus:ring-2 focus:ring-neutral-200"
+                  >
+                    Add Test Case
+                  </button>
+                </div>
+
+                {selectedSnippet.testCases.length > 0 ? (
+                  <div className="mt-4 flex flex-col gap-4">
+                    {selectedSnippet.testCases.map((testCase, index) => (
+                      <div
+                        key={testCase.id}
+                        className="rounded-lg border border-neutral-200 bg-neutral-50 p-3"
+                      >
+                        <div className="mb-3 flex items-center justify-between gap-3">
+                          <span className="text-xs font-medium text-neutral-400">
+                            Case {index + 1}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => handleRemoveTestCase(testCase.id)}
+                            className="text-xs font-medium text-neutral-500 transition-colors hover:text-neutral-950 focus:outline-none focus:ring-2 focus:ring-neutral-200"
+                          >
+                            Remove
+                          </button>
+                        </div>
+
+                        <div className="flex flex-col gap-3">
+                          <label className="flex flex-col gap-1.5">
+                            <span className="text-xs font-medium text-neutral-500">
+                              Name
+                            </span>
+                            <input
+                              value={testCase.name}
+                              onChange={(event) =>
+                                handleUpdateTestCase(
+                                  testCase.id,
+                                  "name",
+                                  event.target.value,
+                                )
+                              }
+                              className="h-9 rounded-md border border-neutral-200 bg-white px-3 text-sm text-neutral-700 outline-none transition-colors focus:border-neutral-300 focus:ring-2 focus:ring-neutral-200"
+                              placeholder="Test case name"
+                            />
+                          </label>
+
+                          <label className="flex flex-col gap-1.5">
+                            <span className="text-xs font-medium text-neutral-500">
+                              Input
+                            </span>
+                            <textarea
+                              value={testCase.input}
+                              onChange={(event) =>
+                                handleUpdateTestCase(
+                                  testCase.id,
+                                  "input",
+                                  event.target.value,
+                                )
+                              }
+                              className="min-h-20 resize-y rounded-md border border-neutral-200 bg-white px-3 py-2 font-mono text-xs leading-5 text-neutral-700 outline-none transition-colors focus:border-neutral-300 focus:ring-2 focus:ring-neutral-200"
+                              placeholder="Input"
+                            />
+                          </label>
+
+                          <label className="flex flex-col gap-1.5">
+                            <span className="text-xs font-medium text-neutral-500">
+                              Expected Output
+                            </span>
+                            <textarea
+                              value={testCase.expectedOutput}
+                              onChange={(event) =>
+                                handleUpdateTestCase(
+                                  testCase.id,
+                                  "expectedOutput",
+                                  event.target.value,
+                                )
+                              }
+                              className="min-h-20 resize-y rounded-md border border-neutral-200 bg-white px-3 py-2 font-mono text-xs leading-5 text-neutral-700 outline-none transition-colors focus:border-neutral-300 focus:ring-2 focus:ring-neutral-200"
+                              placeholder="Expected output"
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-sm text-neutral-500">
+                    No test cases yet.
+                  </p>
+                )}
               </section>
 
               <section className="px-6 py-5">
                 <h3 className="text-xs font-medium uppercase tracking-wide text-neutral-400">
-                  Run History
+                  Run Results
                 </h3>
-                <p className="mt-3 text-sm text-neutral-500">
-                  Execution results will appear here.
-                </p>
+                <div className="mt-3 flex items-center justify-between gap-3">
+                  <p className="text-sm text-neutral-500">
+                    Mock test output for the selected snippet.
+                  </p>
+                  <button
+                    type="button"
+                    onClick={handleRunTests}
+                    disabled={selectedSnippet.testCases.length === 0}
+                    className="inline-flex h-8 shrink-0 items-center justify-center rounded-md bg-neutral-950 px-3 text-xs font-medium text-white transition-colors hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-neutral-300 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-400"
+                  >
+                    Run Tests
+                  </button>
+                </div>
+
+                {selectedRunResults.length > 0 ? (
+                  <div className="mt-4 flex flex-col gap-3">
+                    {selectedRunResults.map((result) => (
+                      <div
+                        key={result.id}
+                        className="rounded-lg border border-neutral-200 bg-neutral-50 p-3"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <h4 className="text-sm font-medium text-neutral-800">
+                            {result.testCaseName}
+                          </h4>
+                          <span className="rounded-md bg-white px-2 py-1 text-xs font-medium capitalize text-neutral-600 ring-1 ring-inset ring-neutral-200">
+                            {result.status}
+                          </span>
+                        </div>
+
+                        <div className="mt-3 grid gap-3">
+                          <div>
+                            <p className="text-xs font-medium text-neutral-400">
+                              Expected Output
+                            </p>
+                            <pre className="mt-1 overflow-x-auto rounded-md bg-white p-2 font-mono text-xs leading-5 text-neutral-700 ring-1 ring-inset ring-neutral-200">
+                              {result.expectedOutput}
+                            </pre>
+                          </div>
+
+                          <div>
+                            <p className="text-xs font-medium text-neutral-400">
+                              Actual Output
+                            </p>
+                            <pre className="mt-1 overflow-x-auto rounded-md bg-white p-2 font-mono text-xs leading-5 text-neutral-700 ring-1 ring-inset ring-neutral-200">
+                              {result.actualOutput}
+                            </pre>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="mt-3 text-sm text-neutral-500">
+                    Run tests to generate mock results.
+                  </p>
+                )}
               </section>
             </div>
           ) : (

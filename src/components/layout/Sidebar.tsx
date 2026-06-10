@@ -1,30 +1,10 @@
-import type { Language, Snippet } from "@/types";
+import { languageByValue } from "@/lib/languages";
+import type { Snippet } from "@/types";
 
 type SidebarProps = {
   snippets: Snippet[];
   selectedSnippetId?: string;
   onSelectSnippet: (snippet: Snippet) => void;
-};
-
-const languageLabels: Record<Language, string> = {
-  javascript: "JavaScript",
-  typescript: "TypeScript",
-  python: "Python",
-  java: "Java",
-  csharp: "C#",
-  cpp: "C++",
-  go: "Go",
-  rust: "Rust",
-  ruby: "Ruby",
-  php: "PHP",
-  swift: "Swift",
-  kotlin: "Kotlin",
-  sql: "SQL",
-  html: "HTML",
-  css: "CSS",
-  shell: "Shell",
-  markdown: "Markdown",
-  text: "Text",
 };
 
 function formatUpdatedDate(value: string) {
@@ -45,7 +25,7 @@ export function Sidebar({
       <div className="border-b border-neutral-200 px-5 py-5">
         <div className="flex items-center justify-between gap-4">
           <h1 className="text-2xl font-semibold tracking-tight text-neutral-950">
-            Snips Diary
+            Snips
           </h1>
           <button
             type="button"
@@ -78,7 +58,7 @@ export function Sidebar({
                   </span>
                   <span className="mt-2 flex items-center justify-between gap-3">
                     <span className="rounded-md bg-neutral-100 px-2 py-1 text-xs font-medium text-neutral-500">
-                      {languageLabels[snippet.language]}
+                      {languageByValue[snippet.language].displayName}
                     </span>
                     <span className="shrink-0 text-xs text-neutral-400">
                       {formatUpdatedDate(snippet.updatedAt)}
