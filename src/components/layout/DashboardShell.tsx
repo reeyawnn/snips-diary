@@ -22,9 +22,13 @@ type MockRunResult = {
   id: string;
   testCaseId: string;
   testCaseName: string;
-  status: "passed" | "failed";
+  status: "passed" | "failed" | "error";
   expectedOutput: string;
   actualOutput: string;
+  stderr?: string;
+  compileOutput?: string;
+  runtime?: string;
+  memory?: number;
 };
 
 type InitialDashboardState = {
@@ -636,9 +640,46 @@ export function DashboardShell({ snippets }: DashboardShellProps) {
                               Actual Output
                             </p>
                             <pre className="mt-1 overflow-x-auto rounded-md bg-white p-2 font-mono text-xs leading-5 text-neutral-700 ring-1 ring-inset ring-neutral-200">
-                              {result.actualOutput}
+                              {result.actualOutput || "No stdout produced."}
                             </pre>
                           </div>
+
+                          {result.stderr ? (
+                            <div>
+                              <p className="text-xs font-medium text-neutral-400">
+                                Stderr
+                              </p>
+                              <pre className="mt-1 overflow-x-auto rounded-md bg-white p-2 font-mono text-xs leading-5 text-neutral-700 ring-1 ring-inset ring-neutral-200">
+                                {result.stderr}
+                              </pre>
+                            </div>
+                          ) : null}
+
+                          {result.compileOutput ? (
+                            <div>
+                              <p className="text-xs font-medium text-neutral-400">
+                                Compile Output
+                              </p>
+                              <pre className="mt-1 overflow-x-auto rounded-md bg-white p-2 font-mono text-xs leading-5 text-neutral-700 ring-1 ring-inset ring-neutral-200">
+                                {result.compileOutput}
+                              </pre>
+                            </div>
+                          ) : null}
+
+                          {result.runtime || result.memory ? (
+                            <div className="flex flex-wrap gap-2 text-xs text-neutral-500">
+                              {result.runtime ? (
+                                <span className="rounded-md bg-white px-2 py-1 ring-1 ring-inset ring-neutral-200">
+                                  Runtime {result.runtime}s
+                                </span>
+                              ) : null}
+                              {result.memory ? (
+                                <span className="rounded-md bg-white px-2 py-1 ring-1 ring-inset ring-neutral-200">
+                                  Memory {result.memory} KB
+                                </span>
+                              ) : null}
+                            </div>
+                          ) : null}
                         </div>
                       </div>
                     ))}
