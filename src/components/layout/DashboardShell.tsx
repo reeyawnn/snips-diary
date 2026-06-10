@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useEffect, useState } from "react";
 import Editor from "@monaco-editor/react";
 
 import { Sidebar } from "@/components/layout/Sidebar";
@@ -27,6 +27,15 @@ type MockRunResult = {
   actualOutput: string;
 };
 
+type InitialDashboardState = {
+  snippets: Snippet[];
+  selectedSnippetId: string | null;
+  editorDraft: SnippetEditorDraft | null;
+};
+
+const SNIPPETS_STORAGE_KEY = "snips.snippets";
+const SELECTED_SNIPPET_STORAGE_KEY = "snips.selectedSnippetId";
+
 function createEditorDraft(snippet: Snippet): SnippetEditorDraft {
   return {
     title: snippet.title,
@@ -49,22 +58,97 @@ function createTestCase(): TestCase {
   };
 }
 
+function parseStoredSnippets(value: string | null) {
+  if (!value) {
+    return null;
+  }
+
+  try {
+    const parsedValue: unknown = JSON.parse(value);
+
+    if (Array.isArray(parsedValue)) {
+      return parsedValue as Snippet[];
+    }
+  } catch {
+    return null;
+  }
+
+  return null;
+}
+
+function createInitialDashboardState(snippets: Snippet[]): InitialDashboardState {
+  if (typeof window === "undefined") {
+    const selectedSnippet = snippets[0] ?? null;
+
+    return {
+      snippets,
+      selectedSnippetId: selectedSnippet?.id ?? null,
+      editorDraft: selectedSnippet ? createEditorDraft(selectedSnippet) : null,
+    };
+  }
+
+  const storedSnippets = parseStoredSnippets(
+    window.localStorage.getItem(SNIPPETS_STORAGE_KEY),
+  );
+  const nextSnippets =
+    storedSnippets && storedSnippets.length > 0 ? storedSnippets : snippets;
+  const storedSelectedSnippetId = window.localStorage.getItem(
+    SELECTED_SNIPPET_STORAGE_KEY,
+  );
+  const selectedSnippet =
+    nextSnippets.find((snippet) => snippet.id === storedSelectedSnippetId) ??
+    nextSnippets[0] ??
+    null;
+
+  return {
+    snippets: nextSnippets,
+    selectedSnippetId: selectedSnippet?.id ?? null,
+    editorDraft: selectedSnippet ? createEditorDraft(selectedSnippet) : null,
+  };
+}
+
 export function DashboardShell({ snippets }: DashboardShellProps) {
-  const [localSnippets, setLocalSnippets] = useState<Snippet[]>(snippets);
+  const [initialDashboardState] = useState(() =>
+    createInitialDashboardState(snippets),
+  );
+  const [localSnippets, setLocalSnippets] = useState<Snippet[]>(
+    initialDashboardState.snippets,
+  );
   const [runResultsBySnippetId, setRunResultsBySnippetId] = useState<
     Record<string, MockRunResult[]>
   >({});
   const [selectedSnippetId, setSelectedSnippetId] = useState<string | null>(
-    null,
+    initialDashboardState.selectedSnippetId,
   );
   const [editorDraft, setEditorDraft] =
-    useState<SnippetEditorDraft | null>(null);
+    useState<SnippetEditorDraft | null>(initialDashboardState.editorDraft);
 
   const selectedSnippet =
-    localSnippets.find((snippet) => snippet.id === selectedSnippetId) ?? null;
-  const selectedRunResults = selectedSnippetId
-    ? runResultsBySnippetId[selectedSnippetId] ?? []
+    localSnippets.find((snippet) => snippet.id === selectedSnippetId) ??
+    localSnippets[0] ??
+    null;
+  const selectedRunResults = selectedSnippet
+    ? runResultsBySnippetId[selectedSnippet.id] ?? []
     : [];
+
+  useEffect(() => {
+    window.localStorage.setItem(
+      SNIPPETS_STORAGE_KEY,
+      JSON.stringify(localSnippets),
+    );
+  }, [localSnippets]);
+
+  useEffect(() => {
+    if (!selectedSnippet) {
+      window.localStorage.removeItem(SELECTED_SNIPPET_STORAGE_KEY);
+      return;
+    }
+
+    window.localStorage.setItem(
+      SELECTED_SNIPPET_STORAGE_KEY,
+      selectedSnippet.id,
+    );
+  }, [selectedSnippet]);
 
   function handleSelectSnippet(snippet: Snippet) {
     setSelectedSnippetId(snippet.id);
@@ -95,13 +179,15 @@ export function DashboardShell({ snippets }: DashboardShellProps) {
   }
 
   function handleAddTestCase() {
-    if (!selectedSnippetId) {
+    if (!selectedSnippet) {
       return;
     }
 
+    const currentSelectedSnippetId = selectedSnippet.id;
+
     setLocalSnippets((currentSnippets) =>
       currentSnippets.map((snippet) =>
-        snippet.id === selectedSnippetId
+        snippet.id === currentSelectedSnippetId
           ? {
               ...snippet,
               testCases: [...snippet.testCases, createTestCase()],
@@ -113,13 +199,15 @@ export function DashboardShell({ snippets }: DashboardShellProps) {
   }
 
   function handleRemoveTestCase(testCaseId: string) {
-    if (!selectedSnippetId) {
+    if (!selectedSnippet) {
       return;
     }
 
+    const currentSelectedSnippetId = selectedSnippet.id;
+
     setLocalSnippets((currentSnippets) =>
       currentSnippets.map((snippet) =>
-        snippet.id === selectedSnippetId
+        snippet.id === currentSelectedSnippetId
           ? {
               ...snippet,
               testCases: snippet.testCases.filter(
@@ -132,9 +220,9 @@ export function DashboardShell({ snippets }: DashboardShellProps) {
     );
     setRunResultsBySnippetId((currentResults) => ({
       ...currentResults,
-      [selectedSnippetId]: (currentResults[selectedSnippetId] ?? []).filter(
-        (result) => result.testCaseId !== testCaseId,
-      ),
+      [currentSelectedSnippetId]: (
+        currentResults[currentSelectedSnippetId] ?? []
+      ).filter((result) => result.testCaseId !== testCaseId),
     }));
   }
 
@@ -143,13 +231,15 @@ export function DashboardShell({ snippets }: DashboardShellProps) {
     field: "name" | "input" | "expectedOutput",
     value: string,
   ) {
-    if (!selectedSnippetId) {
+    if (!selectedSnippet) {
       return;
     }
 
+    const currentSelectedSnippetId = selectedSnippet.id;
+
     setLocalSnippets((currentSnippets) =>
       currentSnippets.map((snippet) =>
-        snippet.id === selectedSnippetId
+        snippet.id === currentSelectedSnippetId
           ? {
               ...snippet,
               testCases: snippet.testCases.map((testCase) =>
@@ -169,7 +259,7 @@ export function DashboardShell({ snippets }: DashboardShellProps) {
   }
 
   function handleRunTests() {
-    if (!selectedSnippetId || !selectedSnippet) {
+    if (!selectedSnippet) {
       return;
     }
 
@@ -192,7 +282,7 @@ export function DashboardShell({ snippets }: DashboardShellProps) {
 
     setRunResultsBySnippetId((currentResults) => ({
       ...currentResults,
-      [selectedSnippetId]: mockResults,
+      [selectedSnippet.id]: mockResults,
     }));
   }
 
@@ -200,7 +290,7 @@ export function DashboardShell({ snippets }: DashboardShellProps) {
     <div className="flex h-screen overflow-hidden bg-neutral-100 text-neutral-950">
       <Sidebar
         snippets={localSnippets}
-        selectedSnippetId={selectedSnippetId ?? undefined}
+        selectedSnippetId={selectedSnippet?.id}
         onSelectSnippet={handleSelectSnippet}
       />
 
