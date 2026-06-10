@@ -117,6 +117,8 @@ export function DashboardShell({ snippets }: DashboardShellProps) {
   const [runResultsBySnippetId, setRunResultsBySnippetId] = useState<
     Record<string, MockRunResult[]>
   >({});
+  const [isRunningTests, setIsRunningTests] = useState(false);
+  const [runTestsError, setRunTestsError] = useState<string | null>(null);
   const [selectedSnippetId, setSelectedSnippetId] = useState<string | null>(
     initialDashboardState.selectedSnippetId,
   );
@@ -258,32 +260,42 @@ export function DashboardShell({ snippets }: DashboardShellProps) {
     );
   }
 
-  function handleRunTests() {
-    if (!selectedSnippet) {
+  async function handleRunTests() {
+    if (!selectedSnippet || !editorDraft) {
       return;
     }
 
-    const mockResults = selectedSnippet.testCases.map((testCase, index) => {
-      const passed = index % 2 === 0;
-      const expectedOutput =
-        testCase.expectedOutput.trim() || "No expected output provided.";
+    setIsRunningTests(true);
+    setRunTestsError(null);
 
-      return {
-        id: `run-${selectedSnippet.id}-${testCase.id}`,
-        testCaseId: testCase.id,
-        testCaseName: testCase.name.trim() || `Test case ${index + 1}`,
-        status: passed ? "passed" : "failed",
-        expectedOutput,
-        actualOutput: passed
-          ? expectedOutput
-          : `Mock actual output for ${testCase.name || `test case ${index + 1}`}.`,
-      } satisfies MockRunResult;
-    });
+    try {
+      const response = await fetch("/api/run-tests", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          language: editorDraft.language,
+          code: editorDraft.code,
+          testCases: selectedSnippet.testCases,
+        }),
+      });
 
-    setRunResultsBySnippetId((currentResults) => ({
-      ...currentResults,
-      [selectedSnippet.id]: mockResults,
-    }));
+      if (!response.ok) {
+        throw new Error("Unable to run tests.");
+      }
+
+      const data = (await response.json()) as { results?: MockRunResult[] };
+
+      setRunResultsBySnippetId((currentResults) => ({
+        ...currentResults,
+        [selectedSnippet.id]: data.results ?? [],
+      }));
+    } catch {
+      setRunTestsError("Unable to run tests. Please try again.");
+    } finally {
+      setIsRunningTests(false);
+    }
   }
 
   return (
@@ -578,12 +590,20 @@ export function DashboardShell({ snippets }: DashboardShellProps) {
                   <button
                     type="button"
                     onClick={handleRunTests}
-                    disabled={selectedSnippet.testCases.length === 0}
+                    disabled={
+                      selectedSnippet.testCases.length === 0 || isRunningTests
+                    }
                     className="inline-flex h-8 shrink-0 items-center justify-center rounded-md bg-neutral-950 px-3 text-xs font-medium text-white transition-colors hover:bg-neutral-800 focus:outline-none focus:ring-2 focus:ring-neutral-300 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-400"
                   >
-                    Run Tests
+                    {isRunningTests ? "Running..." : "Run Tests"}
                   </button>
                 </div>
+
+                {runTestsError ? (
+                  <p className="mt-3 rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-sm text-neutral-600">
+                    {runTestsError}
+                  </p>
+                ) : null}
 
                 {selectedRunResults.length > 0 ? (
                   <div className="mt-4 flex flex-col gap-3">
